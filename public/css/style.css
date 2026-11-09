@@ -98,6 +98,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .save-status.saving .dot { background: var(--ochre); animation: pulse 1s infinite; }
 .save-status.error .dot, .save-status.conflict .dot { background: var(--critical); }
 .save-status.unsaved .dot { background: var(--ochre); }
+.save-status.readonly .dot { background: var(--cobalt); }
+.save-status.readonly .label { color: var(--cobalt-dark); font-weight: 600; }
+.center-check { display: flex; justify-content: center; margin-top: 16px; color: var(--ink-2); }
 .save-status.unsaved .label { color: var(--terracotta-dark); font-weight: 600; }
 .filebar { display: flex; gap: 6px; }
 @keyframes pulse { 50% { opacity: 0.4; } }

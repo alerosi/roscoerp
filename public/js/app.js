@@ -57,16 +57,25 @@ function renderOperatori() {
 function renderWelcome(main) {
   const card = el("div", { class: "card welcome" }, el("span", { class: "brand-mark" }), el("h2", { class: "center", text: "Benvenuto in RoscoERP" }));
   if (store.mode === "fs") {
+    const scegli = async () => { try { await store.pickFile(false); render(); } catch (e) { if (e.name !== "AbortError") alertDialog(e.message); } };
+    const roBox = el("label", { class: "check center-check" },
+      el("input", { type: "checkbox", checked: store.readOnly, onChange: (e) => { store.setReadOnly(e.target.checked); render(); } }),
+      el("span", { text: " Questo PC è solo per consultare i dati (non scrive mai sul file)" }));
     if (store.fileHandle) {
-      card.append(el("p", { class: "center", text: `Database: ${store.dbPath}. Il browser richiede una conferma per riaprire il file.` }),
+      if (store.loadError) card.append(el("div", { class: "banner danger", text: store.loadError }));
+      card.append(el("p", { class: "center", text: store.loadError
+          ? `Controlla che il file sia nella cartella OneDrive di questo PC, poi premi «Riprova», oppure sceglilo di nuovo.`
+          : `Database: ${store.dbPath}. Il browser chiede di confermare l'accesso al file: scegli «Consenti a ogni visita» (o «Consenti sempre») e dalla prossima volta il file verrà riletto da solo.` }),
         el("div", { class: "toolbar", style: { justifyContent: "center", marginTop: "14px" } },
-          el("button", { class: "btn primary big", onClick: async () => { try { await store.reopenHandle(); render(); } catch (e) { alertDialog(e.message); } } }, "Riapri il database"),
-          el("button", { class: "btn", onClick: async () => { try { await store.pickFile(false); render(); } catch (e) { if (e.name !== "AbortError") alertDialog(e.message); } } }, "Scegli un altro file…")));
+          el("button", { class: "btn primary big", onClick: async () => { try { await store.reopenHandle(); render(); } catch (e) { alertDialog(e.message); render(); } } }, store.loadError ? "Riprova" : "Riapri il database"),
+          el("button", { class: "btn", onClick: scegli }, "Scegli un altro file…")),
+        roBox);
     } else {
-      card.append(el("p", { class: "center", text: "Scegli il file JSON del database oppure creane uno nuovo. Il browser lo riscriverà ad ogni modifica." }),
+      card.append(el("p", { class: "center", text: "Scegli il file JSON del database (ad esempio nella cartella OneDrive). Il file verrà ricordato: alle aperture successive i dati si rileggono da lì." }),
         el("div", { class: "toolbar", style: { justifyContent: "center", marginTop: "14px" } },
-          el("button", { class: "btn primary big", onClick: async () => { try { await store.pickFile(false); render(); } catch (e) { if (e.name !== "AbortError") alertDialog(e.message); } } }, "Apri database esistente…"),
-          el("button", { class: "btn big", onClick: async () => { try { await store.pickFile(true); render(); } catch (e) { if (e.name !== "AbortError") alertDialog(e.message); } } }, "Crea nuovo database…")));
+          el("button", { class: "btn primary big", onClick: scegli }, "Apri database esistente…"),
+          store.readOnly ? null : el("button", { class: "btn big", onClick: async () => { try { await store.pickFile(true); render(); } catch (e) { if (e.name !== "AbortError") alertDialog(e.message); } } }, "Crea nuovo database…")),
+        roBox);
     }
   } else if (store.mode === "local") {
     card.append(el("p", { class: "center", text: "Apri il file roscoerp.json del negozio (ad esempio da OneDrive) per vedere e modificare i dati. Le modifiche restano in questo browser finché non premi «Salva file»." }),
@@ -130,6 +139,13 @@ function setStatus(s, err) {
     box.title = "I dati sono nella memoria di questo browser." + (info.fileName ? `\nUltimo file aperto: ${info.fileName}${info.openedAt ? " (" + fmtDateTime(info.openedAt) + ")" : ""}` : "") + (info.exportedAt ? `\nUltimo «Salva file»: ${fmtDateTime(info.exportedAt)}` : "");
     return;
   }
+  if (store.mode === "fs" && store.readOnly && store.db) {
+    const quando = store.db.meta.savedAt ? fmtDateTime(store.db.meta.savedAt) : "";
+    box.className = "save-status readonly";
+    label.textContent = "Sola consultazione" + (quando ? ` · dati del ${quando}` : "");
+    box.title = `File: ${store.dbPath}\nQuesto PC non scrive mai sul file. I dati si rileggono all'apertura e quando torni su questa pagina.`;
+    return;
+  }
   if (s === "saving") label.textContent = "Salvataggio…";
   else if (s === "saved") label.textContent = `Salvato ${fmtDateTime(store.db.meta.savedAt).slice(-5)} · ${where ? where.split(/[\\/]/).pop() : ""}`;
   else if (s === "error") label.textContent = "Errore di salvataggio!";
@@ -156,6 +172,8 @@ async function main() {
     if (what === "load") render();
     if (store.mode === "local" && (what === "load" || what === "localFile")) setStatus(store.status);
     if (what === "localFile" && current === "impostazioni") render();
+    if (what === "readonly") { setStatus(store.status); if (current === "impostazioni") render(); }
+    if (what === "readonlyBlocked") toast("Questo PC è in sola consultazione: la modifica non è stata salvata", "warn", 5000);
   });
   $("#fileOpenInput").addEventListener("change", (e) => apriFileLocale(e.target));
   $("#fileSaveBtn").addEventListener("click", salvaFileLocale);

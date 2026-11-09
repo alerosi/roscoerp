@@ -15,6 +15,16 @@ import { nowIso, debounce } from "./util.js";
 
 const LS_DB = "roscoerp.db";
 const LS_OPERATORE = "roscoerp.operatore";
+const LS_READONLY = "roscoerp.readonly";
+
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+/** Messaggio comprensibile quando il file del database non si riesce a leggere. */
+function fileErrorMessage(e, name) {
+  if (e && e.name === "NotFoundError") return `Il file "${name}" non si trova più dove era stato scelto: forse è stato spostato o rinominato, oppure OneDrive non l'ha ancora scaricato su questo PC.`;
+  if (e instanceof SyntaxError) return `Il file "${name}" non è un JSON valido (forse OneDrive lo sta ancora sincronizzando: riprova tra poco).`;
+  return `Impossibile leggere "${name}": ${e && e.message ? e.message : e}`;
+}
 const IDB_NAME = "roscoerp";
 const IDB_STORE = "handles";
 
@@ -145,6 +155,9 @@ class Store {
     this.saveDebounced = debounce(() => this.save(), 300);
     this.dirty = false;
     this.serverInfo = null;
+    this.readOnly = lsGet(LS_READONLY) === "1"; // vale solo per questo browser (modalità fs)
+    this.fileLastModified = null;
+    this.loadError = null;
     // modalità local: da quale file vengono i dati e se ci sono modifiche non ancora salvate su file
     this.localInfo = { fileName: "", fileSavedAt: null, openedAt: null, exportedAt: null, unsaved: false };
   }
@@ -166,6 +179,11 @@ class Store {
 
   /** Da chiamare dopo ogni modifica: notifica la UI e programma il salvataggio. */
   commit(what = "db") {
+    if (this.mode === "fs" && this.readOnly) {
+      // sola consultazione: la modifica non viene salvata, si torna ai dati del file
+      this.loadFromHandle().catch((e) => console.error(e)).then(() => this.notify("readonlyBlocked"));
+      return;
+    }
     this.dirty = true;
     if (this.mode === "local" && !this.localInfo.unsaved) { this.localInfo.unsaved = true; this.saveLocalInfo(); }
     this.notify(what);
@@ -193,10 +211,14 @@ class Store {
       if (handle) {
         this.fileHandle = handle;
         this.dbPath = handle.name;
-        const perm = await handle.queryPermission({ mode: "readwrite" }).catch(() => "prompt");
-        if (perm === "granted") { await this.loadFromHandle(); return; }
-        // il permesso va richiesto con un gesto utente: la UI mostrerà il pulsante "Riapri file"
+        // Con "Consenti a ogni visita" (Chrome/Edge) il permesso è già concesso e il file si rilegge da
+        // solo; altrimenti va richiesto con un clic: la UI mostra il pulsante "Riapri il database".
+        const perm = await handle.queryPermission({ mode: this.permMode }).catch(() => "prompt");
         this.db = null;
+        if (perm === "granted") {
+          try { await this.loadFromHandle(); }
+          catch (e) { this.loadError = fileErrorMessage(e, handle.name); this.db = null; }
+        }
         return;
       }
       this.db = null; // la UI chiede di scegliere/creare il file
@@ -331,16 +353,42 @@ class Store {
     }
   }
   async reopenHandle() {
-    const perm = await this.fileHandle.requestPermission({ mode: "readwrite" });
+    const perm = await this.fileHandle.requestPermission({ mode: this.permMode });
     if (perm !== "granted") throw new Error("Permesso negato");
-    await this.loadFromHandle();
+    this.loadError = null;
+    try { await this.loadFromHandle(); }
+    catch (e) { this.loadError = fileErrorMessage(e, this.fileHandle.name); throw new Error(this.loadError); }
   }
   async loadFromHandle() {
     const file = await this.fileHandle.getFile();
     const text = await file.text();
     this.db = normalizeDb(text.trim() ? JSON.parse(text) : {});
+    this.fileLastModified = file.lastModified;
+    this.loadError = null;
+    this.dirty = false;
     this.notify("load");
-    await this.save(true);
+    if (this.readOnly) this.setStatus("readonly");
+    else await this.save(true);
+  }
+
+  // ---- sola consultazione (modalità fs): questo PC legge il file e non lo scrive mai
+  get permMode() { return this.readOnly ? "read" : "readwrite"; }
+  setReadOnly(v) {
+    this.readOnly = !!v;
+    try { localStorage.setItem(LS_READONLY, this.readOnly ? "1" : "0"); } catch (e) { /* ignore */ }
+    this.notify("readonly");
+    if (this.db) this.setStatus(this.readOnly ? "readonly" : "saved");
+  }
+  /** Rilegge il file se è cambiato dall'ultima lettura (sola consultazione). Ritorna true se ha ricaricato. */
+  async refreshIfChanged() {
+    if (this.mode !== "fs" || !this.readOnly || !this.fileHandle || !this.db) return false;
+    try {
+      if (await this.fileHandle.queryPermission({ mode: "read" }) !== "granted") return false;
+      const file = await this.fileHandle.getFile();
+      if (file.lastModified === this.fileLastModified) return false;
+      await this.loadFromHandle();
+      return true;
+    } catch (e) { console.warn("Rilettura del file non riuscita", e); return false; }
   }
 
   /** Sostituisce il database corrente con uno importato (file JSON caricato dall'utente). */
@@ -355,6 +403,7 @@ class Store {
   // ---- salvataggio
   async save(immediate = false, force = false) {
     if (!this.db) return;
+    if (this.mode === "fs" && this.readOnly) { this.dirty = false; this.setStatus("readonly"); return false; }
     this.setStatus("saving");
     try {
       this.db.meta.savedAt = nowIso();
@@ -412,4 +461,8 @@ class Store {
 export const store = new Store();
 window.addEventListener("pagehide", () => store.flushOnClose());
 window.addEventListener("beforeunload", () => store.flushOnClose());
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && store.dirty) store.save(true); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && store.dirty) store.save(true);
+  // sola consultazione: tornando sulla pagina si rilegge il file se il PC principale l'ha cambiato
+  if (document.visibilityState === "visible") store.refreshIfChanged();
+});

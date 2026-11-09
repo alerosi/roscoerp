@@ -37,12 +37,26 @@ function secDatabase(root, rerender) {
         el("span", { class: "hint", text: "Se il file esiste viene caricato; se non esiste puoi crearlo vuoto oppure copiarci il database attuale." })),
     );
   } else if (store.mode === "fs") {
+    const ro = checkbox("Questo PC è solo per consultare i dati (non scrive mai sul file)", store.readOnly, {
+      onChange: async (e) => {
+        const v = e.target.checked;
+        if (!v && !await confirmDialog("Da ora questo PC potrà modificare il file del database. Fallo solo se è il PC che registra le operazioni: se due PC scrivono lo stesso file, si perdono dati.", { title: "Consentire le modifiche?", ok: "Consenti le modifiche", danger: true })) { e.target.checked = true; return; }
+        store.setReadOnly(v);
+        if (!v && store.fileHandle) { try { await store.reopenHandle(); } catch (err) { alertDialog(err.message); } }
+        rerender();
+      },
+    });
     card.append(
-      el("p", {}, "Pagina aperta senza il server locale: il browser scrive direttamente sul file JSON scelto (File System Access API). Il permesso viene ricordato dal browser; alla riapertura potrebbe essere richiesta una conferma."),
+      el("p", {}, store.readOnly
+        ? "Pagina aperta senza il server locale, in sola consultazione: il browser legge il file JSON scelto all'apertura e quando torni su questa pagina, ma non lo scrive mai. Le modifiche fatte qui non vengono salvate."
+        : "Pagina aperta senza il server locale: il browser scrive direttamente sul file JSON scelto (File System Access API). Il file viene ricordato; alla riapertura il browser può chiedere una conferma: scegli «Consenti a ogni visita» per non doverlo più fare."),
       el("div", { class: "stat-row" }, el("span", { text: "File attuale" }), el("b", { class: "path-box", text: store.dbPath || "(nessuno)" })),
+      el("div", { class: "stat-row" }, el("span", { text: "Dati salvati dal PC principale il" }), el("b", { text: store.db.meta.savedAt ? fmtDateTime(store.db.meta.savedAt) : "-" })),
+      el("div", { style: { marginTop: "10px" } }, ro),
       el("div", { class: "toolbar", style: { marginTop: "10px" } },
         el("button", { class: "btn primary", onClick: async () => { try { await store.pickFile(false); toast("Database caricato", "ok"); rerender(); } catch (e) { if (e.name !== "AbortError") alertDialog(e.message); } } }, "Apri un altro file…"),
-        el("button", { class: "btn", onClick: async () => { if (!await confirmDialog("Creare un nuovo database vuoto in un nuovo file? I dati attuali restano nel vecchio file.")) return; try { await store.pickFile(true); rerender(); } catch (e) { if (e.name !== "AbortError") alertDialog(e.message); } } }, "Crea nuovo file…")),
+        store.readOnly ? el("button", { class: "btn", onClick: async () => { const r = await store.refreshIfChanged(); toast(r ? "Dati aggiornati dal file" : "Il file non è cambiato", "ok"); } }, "Rileggi il file")
+          : el("button", { class: "btn", onClick: async () => { if (!await confirmDialog("Creare un nuovo database vuoto in un nuovo file? I dati attuali restano nel vecchio file.")) return; try { await store.pickFile(true); rerender(); } catch (e) { if (e.name !== "AbortError") alertDialog(e.message); } } }, "Crea nuovo file…")),
     );
   } else {
     const info = store.localInfo;

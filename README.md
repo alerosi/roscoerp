@@ -41,6 +41,13 @@ il codice: i dati restano sui dispositivi di chi la usa e non passano da GitHub.
 
 - **Computer con Chrome o Edge:** la prima volta si sceglie (o si crea) il file `roscoerp.json`,
   anche nella cartella OneDrive; il browser lo rilegge e lo riscrive da solo ad ogni modifica.
+  Il file viene ricordato: alla riapertura il browser chiede di confermare l'accesso e, scegliendo
+  **«Consenti a ogni visita»**, dalle volte successive i dati si rileggono senza fare nulla.
+- **PC che deve solo consultare** (ad esempio con la cartella OneDrive condivisa dal PC del negozio):
+  spuntare **«Questo PC è solo per consultare i dati»** nella schermata iniziale o in
+  Impostazioni → Database. Quel PC legge il file all'apertura e ogni volta che si torna sulla
+  pagina, ma **non lo scrive mai**: le modifiche fatte lì vengono annullate con un avviso. In OneDrive
+  conviene impostare il file su «Mantieni sempre su questo dispositivo».
 - **Telefono, tablet e altri browser:** i dati stanno nella memoria del browser. Nella barra in alto
   ci sono **Apri file** (carica `roscoerp.json`, ad esempio dall'app OneDrive) e **Salva file**
   (sul telefono apre il menu Condividi: si sceglie OneDrive e si sostituisce il file esistente;

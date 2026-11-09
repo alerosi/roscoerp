@@ -30,7 +30,9 @@ Chart.js 4.4.7 è incluso in `public/vendor/`. Python (openpyxl) serve solo per
   `meta.revision` / `meta.baseRevision`, risposta 409 se non coincidono (salvo `?force`).
   Il percorso del DB sta in `config.json` (ignorato da git); default `data/roscoerp.json`.
 - `public/js/store.js`: classe `Store`. Tre modalità: `server` (normale), `fs` (File System Access
-  API, per hosting statico in Chrome/Edge **solo su computer**, vedi `isMobile()`), `local` (IndexedDB,
+  API, per hosting statico in Chrome/Edge **solo su computer**, vedi `isMobile()`; con `readOnly`,
+  impostazione per browser in localStorage, il PC legge il file e non lo scrive mai: `commit()` annulla
+  la modifica ricaricando il file, `refreshIfChanged()` rilegge quando la pagina torna visibile), `local` (IndexedDB,
   telefoni e altri browser: "Apri file" / "Salva file" nella barra, `localInfo.unsaved` dice se ci sono
   modifiche non ancora salvate su file; "Salva file" usa il menu Condividi sul telefono). L'`index.html`
   della radice serve solo a GitHub Pages (rimanda a `public/`); `tools/prepara_github.ps1` crea

@@ -244,6 +244,32 @@ table.data .neg { color: var(--critical); font-weight: 600; }
 .chart-box.tall { height: 420px; }
 .chart-box.short { height: 240px; }
 .plot-card { margin-top: 18px; }
+/* scheda Statistiche */
+.stat-filters { margin-bottom: 8px; }
+.grid-kpi4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.stat-heat .heat { max-width: 760px; }
+@media (max-width: 900px) { .grid-kpi4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .stat-filter { flex: 1 1 100%; min-width: 0; }
+  .stat-filter select { width: 100%; max-width: 100%; }
+  .stat-filter .toolbar { flex-wrap: wrap; }
+  .kpi .kpi-value { font-size: 24px; }
+  .card-title { flex-wrap: wrap; }
+  .card-title .btn-group .btn { padding: 6px 9px; font-size: 13px; }
+}
+.stat-filter-row { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-end; }
+.stat-filter { display: flex; flex-direction: column; gap: 6px; }
+.stat-filter-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); font-weight: 600; }
+.stat-filter select, .stat-filter input[type=date] { padding: 7px 10px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--paper); font: inherit; color: var(--ink); }
+.stat-filter-summary { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink-2); }
+.stat-section { margin: 34px 0 14px; padding-bottom: 6px; border-bottom: 2px solid var(--line); }
+.stat-section h2 { margin: 0; }
+.stat-section p { margin: 4px 0 0; color: var(--ink-3); font-size: 14px; }
+.card-title .hint { max-width: 70ch; }
+.pos { color: var(--majolica-green); font-weight: 600; }
+.neg { color: var(--critical); font-weight: 600; }
+.warn-txt { color: var(--warning); font-weight: 600; }
+.tipi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 14px; max-height: 50vh; overflow: auto; padding: 4px 2px; }
 .plot-card .card-title { border-bottom: 1px solid var(--line); padding-bottom: 8px; }
 .legend-note { font-size: 12px; color: var(--ink-3); margin-top: 6px; }
 .heat { display: grid; grid-template-columns: 44px repeat(15, 1fr); gap: 3px; font-size: 11px; }

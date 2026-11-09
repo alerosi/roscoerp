@@ -242,7 +242,10 @@ class Store {
   }
 
   // ---- modalità local: scambio con un file JSON
-  saveLocalInfo() { return idbSet("localInfo", { ...this.localInfo }).catch((e) => console.error(e)); }
+  saveLocalInfo() {
+    if (typeof indexedDB === "undefined") return Promise.resolve();
+    return idbSet("localInfo", { ...this.localInfo }).catch((e) => console.error(e));
+  }
 
   /** Legge un File scelto dall'utente e lo controlla, senza ancora sostituire i dati. */
   async readDbFile(file) {
@@ -426,8 +429,10 @@ class Store {
         const w = await this.fileHandle.createWritable();
         await w.write(JSON.stringify(this.db, null, 1));
         await w.close();
-      } else {
+      } else if (typeof indexedDB !== "undefined") {
         await idbSet("db", this.db);
+      } else {
+        localStorage.setItem(LS_DB, JSON.stringify(this.db)); // ambienti senza IndexedDB (test)
       }
       this.dirty = false;
       this.setStatus("saved");

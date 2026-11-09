@@ -126,6 +126,35 @@ test("statistiche e serie temporali", () => {
   assert.ok(A.kpi.ricavi > 0 && A.top.length === 10 && A.mensile.length === 12);
 });
 
+test("scheda Statistiche: i totali quadrano tra loro e con l'analisi esistente", () => {
+  loadDb();
+  const dataIn = new Date(2026, 0, 1), dataEnd = new Date(2026, 10, 8);
+  const close = (x, y, msg) => assert.ok(Math.abs(x - y) < 0.01, `${msg}: ${x} vs ${y}`);
+  const S = L.statisticheNegozio({ dataIn, dataEnd, confronto: "annoPrima" });
+  const A = L.analisiNegozio(dataIn, dataEnd);
+  close(S.kpi.ricavi, A.kpi.ricavi, "incasso uguale all'analisi esistente");
+  assert.equal(S.kpi.pezzi, A.kpi.pezzi);
+  assert.equal(S.kpi.scontrini, A.kpi.scontrini);
+  assert.equal(S.passo, "mese");
+  close(S.serie.ricavi.reduce((a, b) => a + b, 0), S.kpi.ricavi, "serie nel tempo = incasso");
+  close(S.settimana.reduce((a, b) => a + b.valore, 0), S.kpi.ricavi, "giorni della settimana = incasso");
+  close(S.ore.valore.reduce((a, b) => a + b, 0), S.kpi.ricavi, "ore = incasso");
+  assert.equal(S.fasce.valori.reduce((a, b) => a + b, 0), S.kpi.scontrini);
+  close(S.perTipo.reduce((a, t) => a + t.valore, 0), S.kpi.ricavi - A.kpi.incassiExtra, "tipologie = incasso articoli");
+  // il confronto con l'anno prima coincide con le statistiche calcolate direttamente su quel periodo
+  const P = L.statisticheNegozio({ dataIn: new Date(2025, 0, 1), dataEnd: new Date(2025, 10, 8), confronto: "nessuno" });
+  close(S.kpiPrec.ricavi, P.kpi.ricavi, "confronto anno prima");
+  close(S.serie.ricaviPrec.reduce((a, b) => a + b, 0), P.kpi.ricavi, "serie del confronto");
+  // filtro per tipologia: solo quella tipologia, nessun incasso speciale
+  const tipo = S.perTipo[0].tipologia;
+  const F = L.statisticheNegozio({ dataIn, dataEnd, confronto: "nessuno", tipologie: [tipo] });
+  assert.equal(F.perTipo.length, 1);
+  close(F.kpi.ricavi, S.perTipo[0].valore, "filtro tipologia");
+  assert.equal(F.kpiPrec, null);
+  // magazzino: il valore totale coincide con l'analisi esistente
+  close(L.statisticheMagazzino().valore, A.valoreMag, "valore magazzino");
+});
+
 test("navigazione del periodo", () => {
   loadDb();
   L.periodo.mese();

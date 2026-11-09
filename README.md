@@ -114,16 +114,33 @@ Reference/             il file Excel originale
 | Movimenti: Check | Scheda **Movimenti → Check** e **Verifica coerenza** |
 | Vendite: Canc. | Scheda **Vendite** (più la modifica dei campi che non toccano il magazzino) |
 | Spese: Canc. | Scheda **Spese** (più la modifica) |
-| Statistiche: tabella per tipologia, Plot, G/S/M, Media, Quantità/Valore/Incassi totali, Andam. Sett./Giorn./Ann., Tutte le vendite, Canc., PDF | Scheda **Statistiche**, prima parte: niente pulsante Plot, il grafico "Andamento nel tempo" compare spuntando le tipologie e si aggiorna da solo a ogni cambio di passo (Giorno/Settimana/Mese), criterio e Media; "Giorno della settimana", "Ora del giorno" e "Confronto anni" aprono e chiudono il proprio grafico, "Su tutto lo storico" = Tutte le vendite. Si stampano in PDF dal browser |
+| Statistiche: tabella per tipologia, Plot, G/S/M, Media, Quantità/Valore/Incassi totali, Andam. Sett./Giorn./Ann., Tutte le vendite, Canc., PDF | Scheda **Statistiche**, riorganizzata da capo (vedi sotto). Il plot per tipologia diventa il filtro "Tipologie"; gli andamenti settimanale, giornaliero e annuale diventano "Giorno della settimana", "Ora del giorno" e "Mese per mese, anno per anno". Si stampa in PDF dal browser |
 | Tasse: Forza IVA, regime, IRPEF, INPS, spese deducibili/detraibili | Scheda **Tasse** |
 | Impostazioni: digit codice, tipologie (Agg./Mod./Canc.), fornitori, zone, pagamenti, clienti, tipologie spese, operatori, caselle di opzione | Scheda **Impostazioni**, una sezione per ogni lista |
 | Utente di Windows registrato su movimenti e spese | Operatore scelto nella barra in alto (in mancanza, l'utente del computer) |
 
-In più rispetto a Excel: la sezione **Analisi del negozio** (indicatori del periodo con confronto
-al periodo precedente, incassi mensili vs anno precedente, ripartizione per tipologia, top 10
-articoli, incassi per operatore/pagamento/zona, mappa giorno×ora, valore magazzino per tipologia,
-articoli fermi, articoli da riordinare), la **Verifica coerenza** del magazzino, i backup
-automatici e l'export CSV di ogni tabella.
+### Scheda Statistiche
+
+In alto una sola barra di filtri, che vale per tutta la pagina (preferenze del browser, non del
+database): **Periodo** (questo mese, mese scorso, ultimi 3 o 12 mesi, quest'anno, anno scorso, tutto lo
+storico, come nel Pannello, date a scelta), **Confronta con** (stesse date dell'anno prima, periodo
+precedente, nessuno), **Tipologie** (tutte o alcune; anche con un clic sulla tabella) e **Mostra**
+(incasso € o pezzi). Sotto, sei sezioni:
+
+- **Riepilogo**: incasso netto, scontrini, scontrino medio, pezzi, pezzi per scontrino, margine lordo,
+  giorni con vendite, incasso medio al giorno, ognuno con la variazione rispetto al confronto.
+- **Andamento**: incasso (o pezzi) nel tempo con la linea del confronto e il passo automatico o a scelta;
+  progressivo dall'inizio dell'anno, anno per anno; mese per mese negli ultimi anni.
+- **Cosa si vende**: tabella per tipologia (pezzi, incasso, quota, prezzo medio, margine, variazione),
+  quota per tipologia, margine per tipologia, articoli e decori più venduti.
+- **Quando si vende**: media per giorno della settimana nei giorni di apertura, ora del giorno, mappa giorno×ora.
+- **Cassa e operatori**: fasce di importo degli scontrini, per operatore; per pagamento e zona solo
+  quando questi campi sono compilati nelle vendite.
+- **Magazzino oggi** (non dipende dal periodo): valore, pezzi, codici, merce ferma, tabella per tipologia
+  con i **mesi di scorta**, articoli fermi e da riordinare.
+
+In più rispetto a Excel: la scheda Statistiche descritta sopra, la **Verifica coerenza** del
+magazzino, i backup automatici e l'export CSV di ogni tabella.
 
 ## Bachi trovati nelle macro
 

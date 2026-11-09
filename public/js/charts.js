@@ -58,10 +58,13 @@ export function hexA(hex, a) {
 
 /** Grafico a linee multi-serie (serie temporali). */
 export function lineChart(canvas, labels, series, { fmt = num, mediaSerie = null, fill = false, dashed = false } = {}) {
-  const datasets = series.map((s, i) => ({
-    label: s.nome, data: s.valori, borderColor: colorFor(i), backgroundColor: fill ? hexA(colorFor(i), 0.12) : colorFor(i),
-    tension: 0.3, fill, borderDash: dashed ? [4, 4] : undefined, borderWidth: dashed ? 1.2 : 2, pointRadius: dashed ? 0 : 3,
-  }));
+  const datasets = series.map((s, i) => {
+    const c = s.colore || colorFor(i);
+    return {
+      label: s.nome, data: s.valori, borderColor: c, backgroundColor: fill ? hexA(c, 0.12) : c,
+      tension: 0.3, fill, borderDash: dashed || s.tratteggio ? [4, 4] : undefined, borderWidth: dashed ? 1.2 : (s.spessore || 2), pointRadius: dashed ? 0 : 3,
+    };
+  });
   if (mediaSerie) datasets.push({ label: "Media", data: mediaSerie, borderColor: "#2b2420", backgroundColor: "#2b2420", tension: 0.3, borderWidth: 2.5, pointRadius: 3 });
   return makeChart(canvas, {
     type: "line",
@@ -78,7 +81,7 @@ export function lineChart(canvas, labels, series, { fmt = num, mediaSerie = null
 export function barChart(canvas, labels, series, { fmt = num, stacked = false, horizontal = false, colors = null, dataLabels = false } = {}) {
   const datasets = series.map((s, i) => ({
     label: s.nome, data: s.valori,
-    backgroundColor: colors ? colors : (series.length === 1 ? colorFor(0) : colorFor(i)),
+    backgroundColor: s.colore || (colors ? colors : (series.length === 1 ? colorFor(0) : colorFor(i))),
     borderColor: "#fffdf8", borderWidth: stacked ? 2 : 0, maxBarThickness: 48,
   }));
   return makeChart(canvas, {
@@ -95,6 +98,21 @@ export function barChart(canvas, labels, series, { fmt = num, stacked = false, h
         : { x: { ...xAxis(), stacked }, y: axis(fmt, { beginAtZero: true, stacked }) },
     },
     plugins: dataLabels ? [valueLabels(fmt)] : [],
+  });
+}
+
+/** Barre per il periodo scelto + linea tratteggiata per il periodo di confronto (se c'è). */
+export function confrontoChart(canvas, labels, valori, valoriPrec, { fmt = num, nome = "Periodo scelto", nomePrec = "Confronto" } = {}) {
+  const datasets = [{ type: "bar", label: nome, data: valori, backgroundColor: colorFor(0), maxBarThickness: 40, order: 2 }];
+  if (valoriPrec) datasets.push({ type: "line", label: nomePrec, data: valoriPrec, borderColor: "#a3968a", backgroundColor: "#a3968a", borderDash: [5, 4], borderWidth: 2, pointRadius: 2, tension: 0.3, order: 1 });
+  return makeChart(canvas, {
+    type: "bar",
+    data: { labels, datasets },
+    options: {
+      interaction: { mode: "index", intersect: false },
+      plugins: { legend: { display: !!valoriPrec, position: "bottom" }, tooltip: { callbacks: { label: (c) => ` ${c.dataset.label}: ${fmt(c.parsed.y)}` } } },
+      scales: { x: xAxis(), y: axis(fmt, { beginAtZero: true }) },
+    },
   });
 }
 

@@ -10,7 +10,7 @@ Leggere anche `README.md` (uso) e `docs/ANALISI_MACRO.md` (bachi delle macro ori
 
 ```bash
 node server.js      # http://localhost:8787 (PORT=9000 per cambiare porta)
-npm test            # node --test tests/logic.test.mjs (7 test, devono restare verdi)
+npm test            # node --test tests/logic.test.mjs (8 test, devono restare verdi)
 ```
 
 I test leggono il database reale `data/roscoerp.json` (confronto con i valori dell'Excel sul periodo
@@ -42,6 +42,10 @@ Chart.js 4.4.7 è incluso in `public/vendor/`. Python (openpyxl) serve solo per
 - `public/js/logic.js`: **tutto il dominio** (porting delle macro VBA): carico, vendita, incasso,
   spese, cancellazioni, tipologie, periodo, Conto Economico (`contoEconomico`, equivalente di
   `aggiorna`), statistiche, `analisiNegozio`, `verificaIntegrita`. Nessun accesso al DOM.
+  La scheda Statistiche usa solo `statisticheNegozio` (un passaggio sulle vendite: periodo, confronto,
+  filtro tipologie) e `statisticheMagazzino`; `statisticheTipologie`, `serieTemporali`, `andamento*` e
+  `analisiNegozio` restano per i test e per confronto. I filtri della scheda stanno in localStorage
+  (`roscoerp.statistiche`), non nel database.
 - `public/js/forms.js`: le UserForm Excel (carica, seleziona, vendita, incasso, spesa) come modali.
 - `public/js/ui.js`: modali, dialog, campi, `dataTable`. `util.js`: date, formati, `el()` DOM builder.
 - `public/js/charts.js`: Chart.js, palette "maiolica" validata. `public/js/views/*.js`: le schede

@@ -870,4 +870,193 @@ export function analisiNegozio(dataIn, dataEnd) {
 }
 function mapToSorted(m) { return Array.from(m.entries()).map(([nome, valore]) => ({ nome, valore })).sort((a, b) => b.valore - a.valore); }
 
+// =============================================================== SCHEDA STATISTICHE
+// Tutti i numeri della scheda in un solo passaggio sulle vendite, per un periodo scelto, un periodo
+// di confronto e un eventuale filtro per tipologie. Gli importi sono netti IVA.
+
+/** Periodo di confronto: "annoPrima" (stesse date un anno prima) o "precedente" (stessa durata, subito prima). */
+export function periodoConfronto(dataIn, dataEnd, tipo) {
+  const a = floorDay(dataIn), b = floorDay(dataEnd);
+  if (tipo === "annoPrima") return { dataIn: addYears(a, -1), dataEnd: addYears(b, -1), versoCorrente: (d) => addYears(d, 1) };
+  if (tipo === "precedente") {
+    if (a.getDate() === 1) {
+      // periodo che parte dal primo del mese: si sposta di mesi interi (ottobre -> settembre, 1-9 nov -> 1-9 ott;
+      // dal 1° gennaio: l'anno prima)
+      const mesi = a.getMonth() === 0 ? 12 : (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth() + 1;
+      const fineMese = b.getTime() === endOfMonth(b).getTime();
+      return { dataIn: addMonths(a, -mesi), dataEnd: fineMese ? endOfMonth(addMonths(startOfMonth(b), -mesi)) : addMonths(b, -mesi), versoCorrente: (d) => addMonths(d, mesi) };
+    }
+    const g = daysBetween(a, b) + 1;
+    return { dataIn: addDays(a, -g), dataEnd: addDays(b, -g), versoCorrente: (d) => addDays(d, g) };
+  }
+  return null;
+}
+/** Passo del grafico nel tempo adatto alla durata del periodo. */
+export function passoAuto(dataIn, dataEnd) {
+  const g = daysBetween(dataIn, dataEnd) + 1;
+  return g <= 45 ? "giorno" : g <= 200 ? "settimana" : "mese";
+}
+const inizioPasso = (d, passo) => (passo === "giorno" ? floorDay(d) : passo === "settimana" ? startOfWeek(d) : startOfMonth(d));
+const passoSuccessivo = (d, passo) => (passo === "giorno" ? addDays(d, 1) : passo === "settimana" ? addDays(d, 7) : addMonths(d, 1));
+/** Limiti superiori (€, netti) delle fasce di importo degli scontrini; l'ultima fascia è "oltre". */
+export const FASCE_SCONTRINO = [20, 40, 70, 120, 250];
+
+export function statisticheNegozio({ dataIn, dataEnd, confronto = "annoPrima", tipologie = [], passo = "auto" }) {
+  const a = floorDay(dataIn), fine = floorDay(dataEnd), b = addDays(fine, 1);
+  const conf = periodoConfronto(a, fine, confronto);
+  const ca = conf ? conf.dataIn : null, cb = conf ? addDays(conf.dataEnd, 1) : null;
+  const filtro = tipologie && tipologie.length ? new Set(tipologie) : null;
+  const arts = articoliByCodice();
+  const passoEff = passo === "auto" ? passoAuto(a, fine) : passo;
+
+  // passi del grafico nel tempo
+  const passi = [];
+  for (let d = inizioPasso(a, passoEff), g = 0; d <= fine && g < 2000; d = passoSuccessivo(d, passoEff), g++) passi.push(d);
+  const indicePasso = (d) => {
+    if (d < a || d >= b) return -1;
+    let lo = 0, hi = passi.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (passi[mid] <= d) lo = mid; else hi = mid - 1; }
+    return lo;
+  };
+  const vuoto = () => new Array(passi.length).fill(0);
+  const serie = { ricavi: vuoto(), pezzi: vuoto(), ricaviPrec: vuoto(), pezziPrec: vuoto() };
+
+  const nuovoTot = () => ({ ricavi: 0, ricaviArticoli: 0, pezzi: 0, costo: 0, scontrini: new Map(), giorni: new Set() });
+  const cur = nuovoTot(), prec = nuovoTot();
+  const perTipo = new Map(), perArticolo = new Map(), perDecoro = new Map(), perOperatore = new Map(), perPagamento = new Map(), perZona = new Map();
+  const settimana = Array.from({ length: 7 }, () => ({ valore: 0, qta: 0, giorni: new Set() }));
+  const ore = { valore: new Array(24).fill(0), qta: new Array(24).fill(0) };
+  const heat = Array.from({ length: 7 }, () => new Array(24).fill(0));
+  const anni = new Map(); // anno -> { valore[12], qta[12] } su tutto lo storico
+  const somma = (m, k, valore, qta) => { const r = m.get(k) || { nome: k, valore: 0, qta: 0 }; r.valore += valore; r.qta += qta; m.set(k, r); return r; };
+
+  for (const v of db().vendite) {
+    const d = parseDate(v.data);
+    if (!d) continue;
+    const speciale = CODICI_SPECIALI.includes(v.codice);
+    const tipo = speciale ? null : (tipologiaDiCodice(v.codice) || "(altro)");
+    if (filtro && (speciale || !filtro.has(tipo))) continue;
+    const netto = nettoVendita(v);
+    const qta = speciale ? 0 : Number(v.qta) || 0;
+    const costo = speciale ? 0 : costoTotVendita(v) || 0;
+    const anno = d.getFullYear();
+    if (!anni.has(anno)) anni.set(anno, { valore: new Array(12).fill(0), qta: new Array(12).fill(0) });
+    anni.get(anno).valore[d.getMonth()] += netto; anni.get(anno).qta[d.getMonth()] += qta;
+
+    const scontrino = toIso(d).slice(0, 16) + "|" + (v.operatore || "");
+    const accumula = (t) => {
+      t.ricavi += netto; t.pezzi += qta; t.costo += costo;
+      if (!speciale) t.ricaviArticoli += netto;
+      t.scontrini.set(scontrino, (t.scontrini.get(scontrino) || 0) + netto);
+      t.giorni.add(toDay(d));
+    };
+    if (conf && d >= ca && d < cb) {
+      accumula(prec);
+      const i = indicePasso(conf.versoCorrente(d));
+      if (i >= 0) { serie.ricaviPrec[i] += netto; serie.pezziPrec[i] += qta; }
+      if (tipo) { const t = perTipo.get(tipo) || nuovaTipo(tipo); t.valorePrec += netto; t.qtaPrec += qta; perTipo.set(tipo, t); }
+    }
+    if (d < a || d >= b) continue;
+    accumula(cur);
+    const i = indicePasso(d);
+    if (i >= 0) { serie.ricavi[i] += netto; serie.pezzi[i] += qta; }
+    const wd = weekdayMon(d), h = d.getHours();
+    settimana[wd].valore += netto; settimana[wd].qta += qta; settimana[wd].giorni.add(toDay(d));
+    ore.valore[h] += netto; ore.qta[h] += qta;
+    heat[wd][h] += netto;
+    somma(perOperatore, v.operatore || "(non indicato)", netto, qta);
+    somma(perPagamento, v.pagamento || "(non indicato)", netto, qta);
+    somma(perZona, v.zona || "(non indicata)", netto, qta);
+    if (!tipo) continue;
+    const t = perTipo.get(tipo) || nuovaTipo(tipo);
+    t.valore += netto; t.qta += qta; t.costo += costo; perTipo.set(tipo, t);
+    const art = arts.get(v.codice);
+    const pa = somma(perArticolo, v.codice, netto, qta);
+    if (!pa.descr) pa.descr = art ? [art.tipologia, art.descrizione, art.dimensioni, art.decoro].filter(Boolean).join(" ") : "(articolo eliminato)";
+    if (art && art.decoro) somma(perDecoro, art.decoro, netto, qta);
+  }
+
+  const riepilogo = (t) => {
+    const sc = t.scontrini.size, gg = t.giorni.size;
+    const margine = t.ricaviArticoli - t.costo;
+    return {
+      ricavi: t.ricavi, pezzi: t.pezzi, scontrini: sc, scontrinoMedio: sc ? t.ricavi / sc : 0,
+      pezziPerScontrino: sc ? t.pezzi / sc : 0, margine, marginePct: t.ricaviArticoli ? margine / t.ricaviArticoli : 0,
+      giorniVendita: gg, mediaGiorno: gg ? t.ricavi / gg : 0,
+    };
+  };
+  const totTipi = Array.from(perTipo.values()).reduce((s, t) => s + t.valore, 0);
+  const tipi = Array.from(perTipo.values()).filter((t) => t.valore || t.qta || t.valorePrec).map((t) => ({
+    ...t, margine: t.valore - t.costo, marginePct: t.valore ? (t.valore - t.costo) / t.valore : 0,
+    prezzoMedio: t.qta ? t.valore / t.qta : 0, quota: totTipi ? t.valore / totTipi : 0,
+    variazione: t.valorePrec ? (t.valore - t.valorePrec) / t.valorePrec : null,
+  })).sort((x, y) => y.valore - x.valore);
+
+  const fasce = new Array(FASCE_SCONTRINO.length + 1).fill(0);
+  for (const imp of cur.scontrini.values()) {
+    let k = FASCE_SCONTRINO.findIndex((lim) => imp < lim);
+    if (k < 0) k = FASCE_SCONTRINO.length;
+    fasce[k]++;
+  }
+  const fasceLabels = FASCE_SCONTRINO.map((lim, i) => (i === 0 ? `sotto ${lim} €` : `${FASCE_SCONTRINO[i - 1]}-${lim} €`)).concat(`oltre ${FASCE_SCONTRINO[FASCE_SCONTRINO.length - 1]} €`);
+
+  // progressivo dall'inizio dell'anno (ultimi 3 anni), fino al mese corrente per l'anno in corso
+  const t0 = today();
+  const anniOrd = Array.from(anni.keys()).sort();
+  const progressivo = anniOrd.slice(-3).map((y) => {
+    let acc = 0, accQ = 0;
+    const r = anni.get(y);
+    const valore = [], qta = [];
+    for (let m = 0; m < 12; m++) {
+      if (y === t0.getFullYear() && m > t0.getMonth()) { valore.push(null); qta.push(null); continue; }
+      acc += r.valore[m]; accQ += r.qta[m];
+      valore.push(acc); qta.push(accQ);
+    }
+    return { anno: y, valore, qta };
+  });
+
+  return {
+    dataIn: a, dataEnd: fine, giorni: daysBetween(a, fine) + 1, passo: passoEff,
+    confronto: conf ? { dataIn: conf.dataIn, dataEnd: conf.dataEnd } : null,
+    kpi: riepilogo(cur), kpiPrec: conf ? riepilogo(prec) : null,
+    serie: { labels: passi, ...serie },
+    perTipo: tipi,
+    perArticolo: Array.from(perArticolo.values()),
+    perDecoro: Array.from(perDecoro.values()),
+    perOperatore: Array.from(perOperatore.values()),
+    perPagamento: Array.from(perPagamento.values()),
+    perZona: Array.from(perZona.values()),
+    settimana: settimana.map((s) => ({ valore: s.valore, qta: s.qta, giorni: s.giorni.size })),
+    ore, heat,
+    fasce: { labels: fasceLabels, valori: fasce },
+    anni: anniOrd.map((y) => ({ anno: y, ...anni.get(y) })),
+    progressivo,
+  };
+}
+function nuovaTipo(tipologia) { return { tipologia, valore: 0, qta: 0, costo: 0, valorePrec: 0, qtaPrec: 0 }; }
+
+/** Situazione del magazzino oggi (non dipende dal periodo), eventualmente per alcune tipologie. */
+export function statisticheMagazzino(tipologie = []) {
+  const filtro = tipologie && tipologie.length ? new Set(tipologie) : null;
+  const consumo = consumoMap(); // pezzi venduti negli ultimi 12 mesi per codice
+  const perTipo = new Map();
+  let valore = 0, pezzi = 0, codici = 0;
+  const fermi = [], daRiordinare = [];
+  for (const art of db().magazzino) {
+    if (filtro && !filtro.has(art.tipologia)) continue;
+    const g = Number(art.giacenza) || 0, val = valoreArticolo(art), c = consumo.get(art.codice) || 0;
+    valore += val; pezzi += g; if (g > 0) codici++;
+    const t = perTipo.get(art.tipologia) || { tipologia: art.tipologia, valore: 0, pezzi: 0, venduti12: 0 };
+    t.valore += val; t.pezzi += g; t.venduti12 += c; perTipo.set(art.tipologia, t);
+    if (g > 0 && c === 0) fermi.push({ ...art, valore: val });
+    if (g === 0 && c >= 3) daRiordinare.push({ ...art, venduti12: c });
+  }
+  const tipi = Array.from(perTipo.values()).filter((t) => t.pezzi || t.venduti12)
+    .map((t) => ({ ...t, mesiScorta: t.venduti12 ? t.pezzi / (t.venduti12 / 12) : null }))
+    .sort((x, y) => y.valore - x.valore);
+  fermi.sort((x, y) => y.valore - x.valore);
+  daRiordinare.sort((x, y) => y.venduti12 - x.venduti12);
+  return { valore, pezzi, codici, perTipo: tipi, fermi, valoreFermi: fermi.reduce((s, x) => s + x.valore, 0), daRiordinare };
+}
+
 export { uniqueSorted, val };

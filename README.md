@@ -114,7 +114,7 @@ Reference/             il file Excel originale
 | Movimenti: Check | Scheda **Movimenti → Check** e **Verifica coerenza** |
 | Vendite: Canc. | Scheda **Vendite** (più la modifica dei campi che non toccano il magazzino) |
 | Spese: Canc. | Scheda **Spese** (più la modifica) |
-| Statistiche: tabella per tipologia, Plot, G/S/M, Media, Quantità/Valore/Incassi totali, Andam. Sett./Giorn./Ann., Tutte le vendite, Canc., PDF | Scheda **Statistiche**, prima parte; i grafici restano in pagina e si stampano in PDF dal browser |
+| Statistiche: tabella per tipologia, Plot, G/S/M, Media, Quantità/Valore/Incassi totali, Andam. Sett./Giorn./Ann., Tutte le vendite, Canc., PDF | Scheda **Statistiche**, prima parte: niente pulsante Plot, il grafico "Andamento nel tempo" compare spuntando le tipologie e si aggiorna da solo a ogni cambio di passo (Giorno/Settimana/Mese), criterio e Media; "Giorno della settimana", "Ora del giorno" e "Confronto anni" aprono e chiudono il proprio grafico, "Su tutto lo storico" = Tutte le vendite. Si stampano in PDF dal browser |
 | Tasse: Forza IVA, regime, IRPEF, INPS, spese deducibili/detraibili | Scheda **Tasse** |
 | Impostazioni: digit codice, tipologie (Agg./Mod./Canc.), fornitori, zone, pagamenti, clienti, tipologie spese, operatori, caselle di opzione | Scheda **Impostazioni**, una sezione per ogni lista |
 | Utente di Windows registrato su movimenti e spese | Operatore scelto nella barra in alto (in mancanza, l'utente del computer) |

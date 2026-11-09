@@ -7,7 +7,8 @@ import { el, eur, eur0, num, num0, pct, fmtDate, fmtDateLong, toDay, MESI_BREVI 
 import { dataTable, checkbox, toast, field } from "../ui.js";
 import { lineChart, barChart, doughnutChart, heatmapHtml, destroyAll, PALETTE, colorFor } from "../charts.js";
 
-const state = { selezione: new Set(), plots: [], sortKey: "valore", sortDir: -1 };
+// selezione e grafici aperti restano anche cambiando scheda; i grafici si aggiornano da soli
+const state = { selezione: new Set(), aperti: new Set(), sortKey: "valore", sortDir: -1 };
 
 export function renderStatistiche(root, rerender) {
   destroyAll(root);
@@ -15,83 +16,118 @@ export function renderStatistiche(root, rerender) {
   const st = s.statistiche;
   const { dataIn, dataEnd } = L.risolviPeriodo();
   const tab = L.statisticheTipologie(dataIn, dataEnd);
-  const save = () => store.commit("settings");
+  // le opzioni dei grafici si ricordano nel database; su un PC in sola consultazione restano solo in memoria
+  const save = () => { if (!(store.mode === "fs" && store.readOnly)) store.commit("settings"); };
 
   // ---------------------------------------------------------------- tabella per tipologia
   const wrap = el("div", { class: "table-wrap", style: { maxHeight: "420px" } });
   const drawTab = () => {
     wrap.innerHTML = "";
     wrap.append(dataTable([
-      { key: "_s", label: "", sortable: false, render: (r) => { const c = el("input", { type: "checkbox" }); c.checked = state.selezione.has(r.tipologia); c.addEventListener("click", (e) => e.stopPropagation()); c.addEventListener("change", () => { if (c.checked) state.selezione.add(r.tipologia); else state.selezione.delete(r.tipologia); }); return c; } },
+      { key: "_s", label: "", sortable: false, render: (r) => { const c = el("input", { type: "checkbox" }); c.checked = state.selezione.has(r.tipologia); c.addEventListener("click", (e) => e.stopPropagation()); c.addEventListener("change", () => { if (c.checked) state.selezione.add(r.tipologia); else state.selezione.delete(r.tipologia); aggiornaAndamento(); }); return c; } },
       { key: "tipologia", label: "Tipologia" },
       { key: "qta", label: "Q.tà tot.", num: true, render: (r) => num(r.qta) },
       { key: "valore", label: "Valore tot. (netto IVA)", num: true, render: (r) => eur(r.valore) },
       { key: "medio", label: "Valore medio", num: true, render: (r) => eur(r.medio) },
-    ], tab, state, { rowKey: (r) => r.tipologia, onRowClick: (r) => { if (state.selezione.has(r.tipologia)) state.selezione.delete(r.tipologia); else state.selezione.add(r.tipologia); drawTab(); }, onSort: drawTab }));
+    ], tab, state, { rowKey: (r) => r.tipologia, onRowClick: (r) => { if (state.selezione.has(r.tipologia)) state.selezione.delete(r.tipologia); else state.selezione.add(r.tipologia); drawTab(); aggiornaAndamento(); }, onSort: drawTab }));
   };
-  drawTab();
 
-  // ---------------------------------------------------------------- controlli plot (come il foglio Statistiche)
-  const periodoBtn = (v, label) => el("button", { class: "btn" + (st.periodo === v ? " active" : ""), onClick: () => { st.periodo = v; save(); rerender(); }, title: `Periodo di aggregazione: ${label}` }, label);
-  const radio = (v, label) => { const r = el("input", { type: "radio", name: "criterio" }); r.checked = st.criterio === v; r.addEventListener("change", () => { st.criterio = v; save(); }); return el("label", { class: "check" }, r, el("span", { text: label })); };
-  const ckMedia = checkbox("Media", !!st.media); ckMedia.input.addEventListener("change", () => { st.media = ckMedia.input.checked; save(); });
-  const ckTutte = checkbox("Tutte le vendite", !!st.tutteLeVendite); ckTutte.input.addEventListener("change", () => { st.tutteLeVendite = ckTutte.input.checked; save(); });
+  // ---------------------------------------------------------------- grafici del foglio Statistiche
+  // Un grafico per tipo, aggiornato da solo a ogni cambio di tipologie spuntate o di opzioni.
   const plotsBox = el("div", { id: "plots" });
+  const ORDINE = ["andamento", "sett", "giorn", "ann"];
+  const cards = {};
+  const periodoTxt = `dal ${fmtDateLong(dataIn)} al ${fmtDateLong(dataEnd)}`;
 
-  const addPlot = (titolo, sottotitolo, build) => {
-    const canvas = el("canvas");
-    const card = el("div", { class: "card plot-card" }, el("div", { class: "card-title" }, el("div", {}, el("h3", { text: titolo }), sottotitolo ? el("div", { class: "hint", text: sottotitolo }) : null),
-      el("div", { class: "toolbar" }, el("button", { class: "btn xs", onClick: () => window.print() }, "PDF / Stampa"), el("button", { class: "btn xs danger", onClick: () => { destroyAll(card); card.remove(); } }, "✕"))),
-      el("div", { class: "chart-box tall" }, canvas));
-    plotsBox.prepend(card);
-    build(canvas, card);
-    card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  const chiudi = (kind) => {
+    if (cards[kind]) { destroyAll(cards[kind]); cards[kind].remove(); delete cards[kind]; }
+    state.aperti.delete(kind);
+    drawBottoni();
   };
-  const periodoLabel = st.tutteLeVendite ? "su tutte le vendite" : `dal ${fmtDateLong(dataIn)} al ${fmtDateLong(dataEnd)}`;
+  /** Crea o sostituisce il riquadro del grafico `kind`; `build(canvas)` lo disegna, oppure si passa `messaggio`. */
+  const mostra = (kind, titolo, sottotitolo, build, messaggio) => {
+    const canvas = el("canvas");
+    const nuova = el("div", { class: "card plot-card" },
+      el("div", { class: "card-title" }, el("div", {}, el("h3", { text: titolo }), sottotitolo ? el("div", { class: "hint", text: sottotitolo }) : null),
+        el("div", { class: "toolbar" }, el("button", { class: "btn xs", onClick: () => window.print() }, "PDF / Stampa"), el("button", { class: "btn xs danger", title: "Chiudi questo grafico", onClick: () => { if (kind === "andamento") { state.selezione.clear(); drawTab(); } chiudi(kind); } }, "✕"))),
+      messaggio ? el("p", { class: "muted", text: messaggio }) : el("div", { class: "chart-box tall" }, canvas));
+    const vecchia = cards[kind];
+    if (vecchia) { destroyAll(vecchia); vecchia.replaceWith(nuova); }
+    else {
+      const dopo = ORDINE.slice(ORDINE.indexOf(kind) + 1).map((k) => cards[k]).find(Boolean);
+      plotsBox.insertBefore(nuova, dopo || null);
+    }
+    cards[kind] = nuova;
+    if (!messaggio) build(canvas);
+  };
 
-  const plot = () => {
+  const aggiornaAndamento = () => {
     const tipologie = Array.from(state.selezione);
-    if (st.criterio !== 3 && !tipologie.length) return toast("Selezionare almeno una tipologia nella tabella.", "warn");
+    if (st.criterio !== 3 && !tipologie.length) { chiudi("andamento"); return; }
+    const crit = st.criterio === 1 ? "Quantità vendute" : st.criterio === 2 ? "Valore venduto (€, netto IVA)" : "Incassi totali (€, netto IVA)";
+    const passo = st.periodo === 1 ? "giornaliero" : st.periodo === 7 ? "settimanale" : "mensile";
+    const chi = st.criterio === 3 ? "tutte le vendite e gli incassi" : tipologie.join(", ");
     const res = L.serieTemporali({ dataIn, dataEnd, periodo: st.periodo, criterio: st.criterio, tipologie, media: st.media });
-    if (!res) return toast("Periodo troppo breve per il passo scelto.", "warn");
+    if (!res) { mostra("andamento", `Andamento nel tempo · ${crit}`, null, null, `Il periodo ${periodoTxt} è troppo breve per il passo ${passo}: scegli un passo più corto (G o S) o allarga il periodo nel Pannello di controllo.`); return; }
     const fmt = st.criterio === 1 ? num0 : eur;
     const labels = res.labels.map((d) => res.periodo >= 30 ? `${MESI_BREVI[d.getMonth()]} ${String(d.getFullYear()).slice(2)}` : fmtDate(d).slice(0, 5));
-    const crit = st.criterio === 1 ? "Quantità" : st.criterio === 2 ? "Valore (€, netto IVA)" : "Incassi totali (€, netto IVA)";
-    addPlot(`Statistiche · ${crit}`, `Passo ${st.periodo === 1 ? "giornaliero" : st.periodo === 7 ? "settimanale" : "mensile"} dal ${fmtDateLong(dataIn)} al ${fmtDateLong(dataEnd)}${res.media ? " · media delle tipologie in nero" : ""}`,
+    mostra("andamento", `Andamento nel tempo · ${crit}`, `${chi} · passo ${passo} ${periodoTxt}${res.media ? " · in nero la media delle tipologie" : ""}`,
       (canvas) => lineChart(canvas, labels, res.series, { fmt, mediaSerie: res.media, dashed: !!res.media }));
   };
-  const plotSett = () => {
-    const r = L.andamentoSettimanale({ dataIn, dataEnd, tutte: st.tutteLeVendite });
-    if (!r.totale) return toast("Nessuna vendita nel periodo.", "warn");
-    addPlot("Andamento settimanale", `Quota dell'incasso netto per giorno della settimana, ${periodoLabel} (totale ${eur(r.totale)})`, (c) => barChart(c, r.labels, [{ nome: "Quota", valori: r.valori }], { fmt: pct, dataLabels: true }));
+  const periodoLabel = () => (st.tutteLeVendite ? "su tutte le vendite" : periodoTxt);
+  const DISTRIB = {
+    sett: () => {
+      const r = L.andamentoSettimanale({ dataIn, dataEnd, tutte: st.tutteLeVendite });
+      if (!r.totale) return mostra("sett", "Vendite per giorno della settimana", null, null, "Nessuna vendita nel periodo.");
+      mostra("sett", "Vendite per giorno della settimana", `Quota dell'incasso netto, ${periodoLabel()} (totale ${eur(r.totale)})`, (c) => barChart(c, r.labels, [{ nome: "Quota", valori: r.valori }], { fmt: pct, dataLabels: true }));
+    },
+    giorn: () => {
+      const r = L.andamentoGiornaliero({ dataIn, dataEnd, tutte: st.tutteLeVendite });
+      if (!r.totale) return mostra("giorn", "Vendite per ora del giorno", null, null, "Nessuna vendita nel periodo.");
+      mostra("giorn", "Vendite per ora del giorno", `Quota dell'incasso netto, ${periodoLabel()}`, (c) => barChart(c, r.labels, [{ nome: "Quota", valori: r.valori }], { fmt: pct, dataLabels: true }));
+    },
+    ann: () => {
+      const r = L.andamentoAnnuale({ dataIn, dataEnd, tutte: st.tutteLeVendite });
+      if (!r.series.length) return mostra("ann", "Confronto tra anni", null, null, "Nessuna vendita nel periodo.");
+      mostra("ann", "Confronto tra anni", `Incassi netti per mese in migliaia di euro, una serie per anno, ${periodoLabel()}`, (c) => barChart(c, r.labels, r.series, { fmt: (v) => num(v) + " K€" }));
+    },
   };
-  const plotGiorn = () => {
-    const r = L.andamentoGiornaliero({ dataIn, dataEnd, tutte: st.tutteLeVendite });
-    if (!r.totale) return toast("Nessuna vendita nel periodo.", "warn");
-    addPlot("Andamento giornaliero", `Quota dell'incasso netto per ora del giorno, ${periodoLabel}`, (c) => barChart(c, r.labels, [{ nome: "Quota", valori: r.valori }], { fmt: pct, dataLabels: true }));
+  const aggiornaDistribuzioni = () => { for (const k of state.aperti) DISTRIB[k](); };
+
+  // ---- comandi
+  const passoBox = el("div", { class: "btn-group" });
+  const drawPasso = () => {
+    passoBox.innerHTML = "";
+    for (const [v, label, t] of [[1, "Giorno", "giornaliero"], [7, "Settimana", "settimanale"], [30, "Mese", "mensile"]]) {
+      passoBox.append(el("button", { class: "btn" + (st.periodo === v ? " active" : ""), title: `Un punto del grafico per ogni ${label.toLowerCase()} (passo ${t})`, onClick: () => { st.periodo = v; save(); drawPasso(); aggiornaAndamento(); } }, label));
+    }
   };
-  const plotAnn = () => {
-    const r = L.andamentoAnnuale({ dataIn, dataEnd, tutte: st.tutteLeVendite });
-    if (!r.series.length) return toast("Nessuna vendita nel periodo.", "warn");
-    addPlot("Andamento annuale", `Incassi netti per mese in migliaia di euro, una serie per anno, ${periodoLabel}`, (c) => barChart(c, r.labels, r.series, { fmt: (v) => num(v) + " K€" }));
+  const radio = (v, label) => { const r = el("input", { type: "radio", name: "criterio" }); r.checked = st.criterio === v; r.addEventListener("change", () => { st.criterio = v; save(); aggiornaAndamento(); }); return el("label", { class: "check" }, r, el("span", { text: label })); };
+  const ckMedia = checkbox("Media delle tipologie", !!st.media); ckMedia.input.addEventListener("change", () => { st.media = ckMedia.input.checked; save(); aggiornaAndamento(); });
+  const ckTutte = checkbox("Su tutto lo storico", !!st.tutteLeVendite); ckTutte.input.addEventListener("change", () => { st.tutteLeVendite = ckTutte.input.checked; save(); aggiornaDistribuzioni(); });
+  const bottoniBox = el("div", { class: "btn-group" });
+  const drawBottoni = () => {
+    bottoniBox.innerHTML = "";
+    for (const [k, label] of [["sett", "Giorno della settimana"], ["giorn", "Ora del giorno"], ["ann", "Confronto anni"]]) {
+      bottoniBox.append(el("button", { class: "btn" + (state.aperti.has(k) ? " active" : ""), onClick: () => { if (state.aperti.has(k)) chiudi(k); else { state.aperti.add(k); DISTRIB[k](); drawBottoni(); cards[k].scrollIntoView({ behavior: "smooth", block: "nearest" }); } } }, label));
+    }
   };
 
+  const riga = (titolo, ...figli) => el("div", { class: "stat-ctrl" }, el("div", { class: "stat-ctrl-title", text: titolo }), el("div", { class: "toolbar", style: { gap: "12px" } }, ...figli));
   const controls = el("div", { class: "card" },
-    el("div", { class: "toolbar", style: { gap: "14px" } },
-      el("button", { class: "btn primary", onClick: plot }, "Plot"),
-      el("span", { class: "muted small", text: "Periodo:" }), el("div", { class: "btn-group" }, periodoBtn(1, "G"), periodoBtn(7, "S"), periodoBtn(30, "M")),
-      ckMedia, radio(1, "Quantità"), radio(2, "Valore"), radio(3, "Incassi totali"),
-      el("span", { style: { flex: 1 } }),
-      el("button", { class: "btn", onClick: plotSett }, "Andam. Sett."), el("button", { class: "btn", onClick: plotGiorn }, "Andam. Giorn."), el("button", { class: "btn", onClick: plotAnn }, "Andam. Ann."), ckTutte,
-      el("button", { class: "btn danger sm", onClick: () => { destroyAll(plotsBox); plotsBox.innerHTML = ""; } }, "Canc. grafici")),
-    el("p", { class: "hint", style: { marginTop: "8px" }, text: "Spunta le tipologie nella tabella e premi Plot per l'andamento nel tempo (periodo del pannello di controllo). \"Media\" traccia la media delle tipologie selezionate. \"Tutte le vendite\" estende gli andamenti settimanale/giornaliero/annuale all'intero storico." }),
+    riga("Andamento nel tempo delle tipologie spuntate", el("span", { class: "muted small", text: "Un punto ogni:" }), passoBox, radio(1, "Quantità"), radio(2, "Valore"), radio(3, "Incassi totali"), ckMedia),
+    el("p", { class: "hint", text: "Spunta una o più tipologie nella tabella: il grafico compare sotto e si aggiorna da solo. «Incassi totali» non richiede tipologie (vendite più incassi e spedizioni). Il periodo è quello scelto nel Pannello di controllo." }),
+    riga("Come si distribuiscono le vendite", bottoniBox, ckTutte),
+    el("p", { class: "hint", text: "Ogni pulsante apre o chiude il suo grafico. «Su tutto lo storico» usa tutte le vendite invece del solo periodo del Pannello." }),
   );
 
   root.append(
-    el("div", { class: "page-head" }, el("div", {}, el("h2", { text: "Statistiche" }), el("p", { text: `Vendite per tipologia dal ${fmtDateLong(dataIn)} al ${fmtDateLong(dataEnd)} (valori netti IVA)` }))),
+    el("div", { class: "page-head" }, el("div", {}, el("h2", { text: "Statistiche" }), el("p", { text: `Vendite per tipologia ${periodoTxt} (valori netti IVA). Il periodo si cambia nel Pannello di controllo.` }))),
     el("div", { class: "grid grid-stat" }, el("div", {}, wrap), controls),
     plotsBox,
   );
+  drawTab(); drawPasso(); drawBottoni();
+  requestAnimationFrame(() => { aggiornaAndamento(); aggiornaDistribuzioni(); });
 
   // ---------------------------------------------------------------- analisi negozio
   renderAnalisi(root, dataIn, dataEnd);

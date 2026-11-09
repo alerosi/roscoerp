@@ -1,0 +1,15 @@
+# configurazione locale (percorso del database di questo computer)
+config.json
+# backup automatici creati dal server accanto al database
+data/backup_*/
+*.tmp
+# DATI REALI DEL NEGOZIO: mai su GitHub (il repository è pubblico)
+data/
+Reference/
+# vecchia guida con dati personali
+docs/GUIDA_GITHUB.pdf
+# cartella generata da tools/prepara_github.ps1
+pubblica_github/
+node_modules/
+.claude/
+__pycache__/

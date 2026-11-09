@@ -1,0 +1,13 @@
+{
+  "name": "roscoerp",
+  "version": "1.0.0",
+  "description": "RoscoERP - gestionale semplificato per negozio di ceramica artistica (porting della versione Excel/VBA)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "import": "python tools/import_xlsm.py Reference/RoscoERP.xlsm data/roscoerp.json",
+    "test": "node --test tests/logic.test.mjs"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

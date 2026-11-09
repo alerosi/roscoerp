@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RoscoERP · Ceramiche</title>
+  <meta name="description" content="Gestionale semplificato per negozio di ceramica artistica: magazzino, vendite, spese, statistiche.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23f6efe2' stroke='%232457a8' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='18' fill='none' stroke='%23d2612f' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='7' fill='%23d9a21b'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="vendor/chart.umd.js"></script>
+</head>
+<body>
+  <div id="app" class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div>
+          <div class="brand-title" id="brandTitle">RoscoERP</div>
+          <div class="brand-sub">Gestionale · ceramica artistica</div>
+        </div>
+      </div>
+      <nav class="tabs" id="tabs" aria-label="Sezioni"></nav>
+      <div class="topbar-right">
+        <label class="operatore">
+          <span>Operatore</span>
+          <select id="operatoreSelect" title="Operatore attivo: viene registrato su movimenti, spese e vendite"></select>
+        </label>
+        <div class="filebar hidden" id="fileBar">
+          <label class="btn sm" title="Apre un file roscoerp.json (ad es. da OneDrive) e ne carica i dati">
+            Apri file<input type="file" id="fileOpenInput" accept=".json,application/json" hidden>
+          </label>
+          <button class="btn sm" id="fileSaveBtn" type="button" title="Salva i dati in roscoerp.json (sul telefono si sceglie OneDrive dal menu Condividi)">Salva file</button>
+        </div>
+        <div class="save-status" id="saveStatus" title="Stato salvataggio">
+          <span class="dot"></span><span class="label">…</span>
+        </div>
+      </div>
+    </header>
+    <main id="main" class="main"></main>
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+    <div id="modals"></div>
+  </div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -153,6 +153,15 @@ test("scheda Statistiche: i totali quadrano tra loro e con l'analisi esistente",
   assert.equal(F.kpiPrec, null);
   // magazzino: il valore totale coincide con l'analisi esistente
   close(L.statisticheMagazzino().valore, A.valoreMag, "valore magazzino");
+  // consumo del Magazzino: di default gli ultimi 12 mesi; da una data = pezzi venduti da quella data
+  const somma = (m) => Array.from(m.values()).reduce((a, b) => a + b, 0);
+  assert.equal(somma(L.consumoMap()), somma(L.consumoMap(L.inizioConsumo("12mesi"))));
+  const dal = L.inizioConsumo("data", "2026-01-01");
+  assert.equal(dal.getFullYear(), 2026); assert.equal(dal.getMonth(), 0); assert.equal(dal.getDate(), 1);
+  const attese = store.db.vendite.filter((v) => v.data >= "2026-01-01").reduce((a, v) => a + (Number(v.qta) || 0), 0);
+  assert.equal(somma(L.consumoMap(dal)), attese);
+  assert.equal(L.inizioConsumo("anno").getMonth(), 0);
+  assert.equal(L.inizioConsumo("mese").getDate(), 1);
 });
 
 test("navigazione del periodo", () => {

@@ -3,14 +3,36 @@
 import { store } from "../store.js";
 import * as L from "../logic.js";
 import { flussoCarico, flussoModificaArticolo } from "../forms.js";
-import { el, eur, num, like, downloadText, trim } from "../util.js";
+import { el, eur, num, like, downloadText, trim, toDay, today, fmtDate } from "../util.js";
 import { dataTable, field, textInput, select, checkbox, toast, confirmDialog, promptDialog, alertDialog, openModal } from "../ui.js";
 
 const state = { sortKey: "codice", sortDir: 1, q: "", tipo: "", soloDisp: false, selected: null, showAll: false };
 
+// Periodo del consumo: preferenza di questo browser (non tocca il database)
+const LS_CONSUMO = "roscoerp.consumo";
+const MODI_CONSUMO = [
+  { value: "12mesi", label: "Ultimi 12 mesi" },
+  { value: "mese", label: "Dall'inizio del mese" },
+  { value: "anno", label: "Dall'inizio dell'anno" },
+  { value: "data", label: "Da una data…" },
+];
+function leggiConsumo() {
+  try { return { modo: "12mesi", dal: null, ...JSON.parse(localStorage.getItem(LS_CONSUMO) || "{}") }; } catch (e) { return { modo: "12mesi", dal: null }; }
+}
+function salvaConsumo(c) { try { localStorage.setItem(LS_CONSUMO, JSON.stringify(c)); } catch (e) { /* ignore */ } }
+function etichettaConsumo(c, inizio) {
+  if (c.modo === "mese") return "Consumo da inizio mese";
+  if (c.modo === "anno") return "Consumo da inizio anno";
+  if (c.modo === "data") return `Consumo dal ${fmtDate(inizio)}`;
+  return "Consumo 12 mesi";
+}
+
 export function renderMagazzino(root, rerender) {
   const s = store.db.settings;
-  const consumo = L.consumoMap();
+  const cons = leggiConsumo();
+  const inizio = L.inizioConsumo(cons.modo, cons.dal);
+  const consumo = L.consumoMap(inizio);
+  const labelConsumo = etichettaConsumo(cons, inizio);
   const rows = store.db.magazzino.filter((a) =>
     (!state.tipo || a.tipologia === state.tipo) && (!state.soloDisp || a.giacenza > 0)
     && (!state.q || [a.codice, a.descrizione, a.dimensioni, a.decoro, a.fornitore, a.tipologia].some((f) => like(f, state.q))));
@@ -21,6 +43,15 @@ export function renderMagazzino(root, rerender) {
   const selTipo = select([{ value: "", label: "Tutte" }, ...s.tipologie.map((t) => t.nome)], state.tipo, { onChange: (e) => { state.tipo = e.target.value; draw(); } });
   const ckDisp = checkbox("Solo disponibili", state.soloDisp);
   ckDisp.input.addEventListener("change", () => { state.soloDisp = ckDisp.input.checked; draw(); });
+  const aggiornaConsumo = (patch) => { Object.assign(cons, patch); salvaConsumo(cons); rerender(); };
+  const selConsumo = select(MODI_CONSUMO, cons.modo, { title: "Su quale periodo contare i pezzi venduti nella colonna Consumo", onChange: (e) => {
+    const modo = e.target.value;
+    // passando a "da una data" si propone l'ultima data usata o, la prima volta, l'inizio dell'anno scorso
+    aggiornaConsumo(modo === "data" && !cons.dal ? { modo, dal: toDay(new Date(today().getFullYear() - 1, 0, 1)) } : { modo });
+  } });
+  const inDal = cons.modo === "data" ? el("input", { type: "date", value: toDay(inizio), max: toDay(today()), onChange: (e) => { if (e.target.value) aggiornaConsumo({ dal: e.target.value }); } }) : null;
+  const campoConsumo = field("Consumo calcolato su", el("div", { class: "toolbar", style: { flexWrap: "nowrap" } }, selConsumo, inDal),
+    { hint: `Pezzi venduti dal ${fmtDate(inizio)} a oggi` });
 
   const sel = () => store.db.magazzino.find((a) => a.id === state.selected) || null;
   const needSel = () => { const a = sel(); if (!a) toast("Selezionare prima una riga del magazzino.", "warn"); return a; };
@@ -49,7 +80,7 @@ export function renderMagazzino(root, rerender) {
     el("button", { class: "btn", onClick: () => { const a = needSel(); if (a) cambiaCodice(a); } }, "Mod. codice"),
     el("button", { class: "btn danger", onClick: () => { const a = needSel(); if (a) cancella(a); } }, "Canc."),
     el("button", { class: "btn", onClick: () => apriVerifica(rerender) }, "Verifica coerenza"),
-    el("button", { class: "btn ghost", onClick: () => esportaCsv(rows, consumo) }, "Esporta CSV"),
+    el("button", { class: "btn ghost", onClick: () => esportaCsv(rows, consumo, labelConsumo) }, "Esporta CSV"),
   );
 
   const wrap = el("div", { class: "table-wrap" });
@@ -57,7 +88,7 @@ export function renderMagazzino(root, rerender) {
   const columns = [
     { key: "codice", label: "Codice", cls: "nowrap mono" }, { key: "tipologia", label: "Tipologia" }, { key: "descrizione", label: "Descrizione" },
     { key: "dimensioni", label: "Dimensioni" }, { key: "decoro", label: "Decoro" },
-    { key: "consumo", label: "Consumo 12 mesi", num: true, sortValue: (r) => consumo.get(r.codice) || 0, render: (r) => num(consumo.get(r.codice) || 0) },
+    { key: "consumo", label: labelConsumo, num: true, sortValue: (r) => consumo.get(r.codice) || 0, render: (r) => num(consumo.get(r.codice) || 0) },
     { key: "giacenza", label: "Giacenza", num: true, render: (r) => el("span", { class: r.giacenza < 0 ? "neg" : (r.giacenza === 0 ? "zero" : ""), text: num(r.giacenza) }) },
     { key: "costo", label: "Costo", num: true, render: (r) => eur(r.costo) },
     { key: "valore", label: "Valore totale", num: true, sortValue: (r) => L.valoreArticolo(r), render: (r) => eur(L.valoreArticolo(r)) },
@@ -83,13 +114,13 @@ export function renderMagazzino(root, rerender) {
   draw();
   root.append(
     el("div", { class: "page-head" }, el("div", {}, el("h2", { text: "Magazzino" }), el("p", { text: `${store.db.magazzino.length} codici · ${num(totGiac)} pezzi · valore ${eur(totVal)}` })), toolbar),
-    el("div", { class: "filters" }, field("Cerca", inQ, { cls: "wide" }), field("Tipologia", selTipo), ckDisp),
+    el("div", { class: "filters" }, field("Cerca", inQ, { cls: "wide" }), field("Tipologia", selTipo), campoConsumo, ckDisp),
     wrap, foot,
   );
 }
 
-function esportaCsv(rows, consumo) {
-  const head = ["Codice", "Tipologia", "Descrizione", "Dimensioni", "Decoro", "Consumo 12 mesi", "Giacenza", "Costo", "Valore totale", "Fornitore", "Prezzo"];
+function esportaCsv(rows, consumo, labelConsumo) {
+  const head = ["Codice", "Tipologia", "Descrizione", "Dimensioni", "Decoro", labelConsumo, "Giacenza", "Costo", "Valore totale", "Fornitore", "Prezzo"];
   const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [head.join(";"), ...rows.map((a) => [a.codice, a.tipologia, a.descrizione, a.dimensioni, a.decoro, consumo.get(a.codice) || 0, a.giacenza, String(a.costo).replace(".", ","), String(L.valoreArticolo(a)).replace(".", ","), a.fornitore, a.prezzo ?? ""].map(esc).join(";"))];
   downloadText("magazzino.csv", "﻿" + lines.join("\r\n"), "text/csv");

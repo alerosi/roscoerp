@@ -54,9 +54,20 @@ export function prossimoCodice(tipo) {
 }
 
 // =============================================================== valori derivati
-/** Consumo degli ultimi 12 mesi (colonna "Consumo" di Magazzino: SUMIFS su Vendite). */
-export function consumoMap() {
-  const limit = addDays(today(), -365);
+/**
+ * Da quando si conta il consumo: "12mesi" (default: ultimi 365 giorni, come in Excel), "mese" (dal primo
+ * del mese in corso), "anno" (dal 1° gennaio), "data" (dalla data `dal`, "YYYY-MM-DD").
+ */
+export function inizioConsumo(modo = "12mesi", dal = null) {
+  const t = today();
+  if (modo === "mese") return startOfMonth(t);
+  if (modo === "anno") return startOfYear(t);
+  if (modo === "data") { const d = floorDay(parseDate(dal)); if (d) return d; }
+  return addDays(t, -365);
+}
+/** Pezzi venduti per codice dalla data `dal` (default: ultimi 12 mesi). Colonna "Consumo" di Magazzino. */
+export function consumoMap(dal = null) {
+  const limit = dal ? floorDay(dal) : inizioConsumo();
   const m = new Map();
   for (const v of db().vendite) {
     const d = parseDate(v.data);

@@ -111,6 +111,7 @@ Reference/             il file Excel originale
 | Oggi / Sett. / Mese / Anno, ± giorno/settimana/mese/anno, CAL | Barra del periodo (le date sono modificabili direttamente) |
 | Conto Economico, valore magazzino, debiti fornitori, % IVA, imponibile, credito IVA | Stesse voci, stesso calcolo (`aggiorna`) |
 | Magazzino: Modifica, Mod. codice, Canc., Ordina su/giù | Scheda **Magazzino**: pulsanti, doppio clic per modificare, clic sulle intestazioni per ordinare |
+| Magazzino: colonna Consumo (pezzi venduti negli ultimi 12 mesi) | Colonna **Consumo**, con il filtro "Consumo calcolato su": ultimi 12 mesi (predefinito), dall'inizio del mese, dall'inizio dell'anno o da una data a scelta (preferenza del browser) |
 | Movimenti: Check | Scheda **Movimenti → Check** e **Verifica coerenza** |
 | Vendite: Canc. | Scheda **Vendite** (più la modifica dei campi che non toccano il magazzino) |
 | Spese: Canc. | Scheda **Spese** (più la modifica) |
